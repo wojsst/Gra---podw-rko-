@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Niebieska Kropka - Gra Przygodowa</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+        }
+        
+        #canvas {
+            border: 2px solid #333;
+            background-color: #ddd;
+            max-width: 100%;
+            max-height: 70vh;
+        }
+        
+        #controlsContainer {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            width: 100%;
+            touch-action: none;
+        }
+        
+        #controlsGrid {
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(3, 60px);
+            gap: 10px;
+            max-width: 100%;
+        }
+        
+        .controlBtn {
+            width: 60px;
+            height: 60px;
+            background-color: #4a90e2;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            touch-action: none;
+        }
+        
+        .controlBtn:active, .controlBtnActive {
+            background-color: #2a6dbd;
+            transform: scale(0.95);
+        }
+        
+        #middleButton {
+            visibility: hidden;
+        }
+        
+        @media (max-width: 768px) {
+            #controlsGrid {
+                grid-template-columns: repeat(3, 50px);
+                grid-template-rows: repeat(3, 50px);
+                gap: 5px;
+            }
+            
+            .controlBtn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="800" height="500"></canvas>
+    
+    <div id="controlsContainer">
+        <div id="controlsGrid">
+            <button class="controlBtn" id="btnUpLeft">↖</button>
+            <button class="controlBtn" id="btnUp">↑</button>
+            <button class="controlBtn" id="btnUpRight">↗</button>
+            <button class="controlBtn" id="btnLeft">←</button>
+            <button class="controlBtn" id="middleButton">□</button>
+            <button class="controlBtn" id="btnRight">→</button>
+            <button class="controlBtn" id="btnDownLeft">↙</button>
+            <button class="controlBtn" id="btnDown">↓</button>
+            <button class="controlBtn" id="btnDownRight">↘</button>
+        </div>
+    </div>
+    
+    <script>
+        // Pobierz element canvas i kontekst
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Dostosowanie rozmiaru canvasa
+        function resizeCanvas() {
+            const container = document.body;
+            const maxWidth = Math.min(container.clientWidth - 20, 800);
+            const maxHeight = Math.min(container.clientHeight * 0.7, 500);
+            const aspectRatio = 800 / 500;
+            
+            let width = maxWidth;
+            let height = width / aspectRatio;
+            
+            if (height > maxHeight) {
+                height = maxHeight;
+                width = height * aspectRatio;
+            }
+            
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+        }
+        
+        // Wywołaj resizeCanvas na początku i przy zmianie rozmiaru okna
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // Ustawienia gry
+        const playerRadius = 20;
+        let playerX = canvas.width / 2;
+        let playerY = canvas.height / 2;
+        let speed = 5;
+        let playerRotation = 0;
+        let isMoving = false;
+        let legAngle = 0;
+        let armAngle = 180;
+        
+        // Stan gry
+        let score = 0;
+        let level = 1;
+        let lives = 3;
+        
+        // Obiekty w grze
+        const coins = [];
+        const obstacles = [];
+        const enemies = [];
+        
+        // Stan kierunków
+        const directions = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
+        
+        // Mapowanie klawiszy na kierunki
+        const keyMap = {
+            'ArrowUp': 'up',
+            'w': 'up',
+            'W': 'up',
+            'ArrowDown': 'down',
+            's': 'down',
+            'S': 'down',
+            'ArrowLeft': 'left',
+            'a': 'left',
+            'A': 'left',
+            'ArrowRight': 'right',
+            'd': 'right',
+            'D': 'right'
+        };
+        
+        // Funkcja generująca losową pozycję
+        function getRandomPosition() {
+            return {
+                x: Math.random() * (canvas.width - 40) + 20,
+                y: Math.random() * (canvas.height - 40) + 20
+            };
+        }
+        
+        // Funkcja sprawdzająca kolizję
+        function checkCollision(obj1, obj2, obj1Radius, obj2Radius) {
+            const dx = obj1.x - obj2.x;
+            const dy = obj1.y - obj2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < (obj1Radius + obj2Radius);
+        }
+      // Funkcja inicjalizująca poziom
+        function initializeLevel() {
+            // Wyczyść poprzednie obiekty
+            coins.length = 0;
+            obstacles.length = 0;
+            enemies.length = 0;
+            
+            // Dodaj monety
+            const coinCount = 5 + level * 2;
+            for (let i = 0; i < coinCount; i++) {
+                let coinPosition;
+                let isValidPosition;
+                
+                do {
+                    coinPosition = getRandomPosition();
+                    // Sprawdź odległość od gracza i innych obiektów
+                    isValidPosition = 
+                        Math.hypot(coinPosition.x - playerX, coinPosition.y - playerY) > 100 &&
+                        !coins.some(coin => 
+                            Math.hypot(coinPosition.x - coin.x, coinPosition.y - coin.y) < 30
+                        );
+                } while (!isValidPosition);
+                
+                coins.push({
+                    x: coinPosition.x,
+                    y: coinPosition.y,
+                    radius: 10,
+                    rotation: 0
+                });
+            }
+            
+            // Dodaj przeszkody
+            const obstacleCount = Math.min(3 + level, 8);
+            for (let i = 0; i < obstacleCount; i++) {
+                let obstaclePosition;
+                let isValidPosition;
+                
+                do {
+                    obstaclePosition = getRandomPosition();
+                    // Sprawdź odległość od gracza i innych obiektów
+                    isValidPosition = 
+                        Math.hypot(obstaclePosition.x - playerX, obstaclePosition.y - playerY) > 150 &&
+                        !coins.some(coin => 
+                            Math.hypot(obstaclePosition.x - coin.x, obstaclePosition.y - coin.y) < 50
+                        ) &&
+                        !obstacles.some(obs => 
+                            Math.hypot(obstaclePosition.x - obs.x, obstaclePosition.y - obs.y) < 50
+                        );
+                } while (!isValidPosition);
+                
+                obstacles.push({
+                    x: obstaclePosition.x,
+                    y: obstaclePosition.y,
+                    width: 30 + Math.random() * 50,
+                    height: 30 + Math.random() * 50,
+                    color: `hsl(${Math.random() * 360}, 50%, 50%)`
+                });
+            }
+            
+            // Dodaj przeciwników
+            const enemyCount = Math.min(level, 5);
+            for (let i = 0; i < enemyCount; i++) {
+                let enemyPosition;
+                let isValidPosition;
+                
+                do {
+                    enemyPosition = getRandomPosition();
+                    // Sprawdź odległość od gracza i innych obiektów
+                    isValidPosition = 
+                        Math.hypot(enemyPosition.x - playerX, enemyPosition.y - playerY) > 200 &&
+                        !obstacles.some(obs => 
+                            enemyPosition.x > obs.x && 
+                            enemyPosition.x < obs.x + obs.width &&
+                            enemyPosition.y > obs.y && 
+                            enemyPosition.y < obs.y + obs.height
+                        );
+                } while (!isValidPosition);
+                
+                enemies.push({
+                    x: enemyPosition.x,
+                    y: enemyPosition.y,
+                    radius: 15,
+                    speed: 1 + level * 0.5,
+                    direction: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // Funkcja rysująca tło
+        function drawBackground() {
+            // Tło nieba
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Trawa
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(0, canvas.height * 0.8, canvas.width, canvas.height * 0.2);
+            
+            // Linie na trawie
+            ctx.strokeStyle = '#45a049';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 10; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height * 0.8 + i * 20);
+                ctx.lineTo(canvas.width, canvas.height * 0.8 + i * 20);
+                ctx.stroke();
+            }
+        }
+
+        // Funkcja rysująca gracza
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(playerX, playerY);
+            ctx.rotate((playerRotation - 90) * Math.PI / 180);
+            
+            // Animacja nóg
+            const legLength = 15;
+            const legOffset = Math.sin(legAngle * Math.PI / 180) * 10;
+            
+            // Nogi
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            
+            // Lewa noga
+            ctx.beginPath();
+            ctx.moveTo(-5, playerRadius);
+            ctx.lineTo(-5, playerRadius + legLength + legOffset);
+            ctx.stroke();
+            
+            // Prawa noga
+            ctx.beginPath();
+            ctx.moveTo(5, playerRadius);
+            ctx.lineTo(5, playerRadius + legLength - legOffset);
+            ctx.stroke();
+            
+            // Ciało (niebieska kropka)
+            ctx.beginPath();
+            ctx.fillStyle = 'blue';
+            ctx.arc(0, 0, playerRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Obwódka ciała
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Ręce
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            
+            // Lewa ręka
+            ctx.beginPath();
+            ctx.moveTo(-playerRadius, 0);
+            ctx.lineTo(-playerRadius - 10, 0 + legOffset);
+            ctx.stroke();
+            
+            // Prawa ręka
+            ctx.beginPath();
+            ctx.moveTo(playerRadius, 0);
+            ctx.lineTo(playerRadius + 10, 0 - legOffset);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        // Funkcja rysująca monety
+        function drawCoins() {
+            coins.forEach(coin => {
+                ctx.save();
+                ctx.translate(coin.x, coin.y);
+                ctx.rotate(coin.rotation);
+                
+                // Złota moneta
+                ctx.beginPath();
+                ctx.fillStyle = 'gold';
+                ctx.arc(0, 0, coin.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Czarna obwódka
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Napis na monecie
+                ctx.fillStyle = 'black';
+                ctx.font = '8px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('+1', 0, 0);
+                
+                // Obróć monetę
+                coin.rotation += 0.1;
+                
+                ctx.restore();
+            });
+        }
+
+        // Funkcja rysująca przeszkody
+        function drawObstacles() {
+            obstacles.forEach(obstacle => {
+                ctx.fillStyle = obstacle.color;
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            });
+        }
+
+        // Funkcja rysująca przeciwników
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.beginPath();
+                ctx.fillStyle = 'red';
+                ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Funkcja aktualizacji monet
+        function updateCoins() {
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                
+                if (checkCollision(
+                    { x: playerX, y: playerY }, 
+                    coin,
